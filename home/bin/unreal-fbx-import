@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""
+Unreal Engine FBX Asset Import Automation Script
+
+This script automates the import of FBX files from a network location into Unreal Engine,
+sets their DefaultSceneRoot mobility to Static, and saves the assets.
+"""
+
+import unreal
+import os
+import glob
+
+def importAssets():
+    source_folder = r'\\192.168.3.112\公共空间\3d编辑器\glb2fbx\config_tc'
+    fbx_files = glob.glob(os.path.join(source_folder, '*.fbx'))
+    asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+    imported_assets = []
+
+    count = 0
+    for fbx_file in fbx_files:
+        count += 1
+        if count > 2:
+            break
+        base_name = os.path.splitext(os.path.basename(fbx_file))[0]
+        destination_path = '/Game/Actor/Chain/Test/' + base_name
+        asset_import_data = unreal.AutomatedAssetImportData()
+        asset_import_data.destination_path = destination_path
+        asset_import_data.filenames = [fbx_file]
+        asset_import_data.replace_existing = True
+
+        factory = unreal.FbxSceneImportFactory()
+        scene_import_options_static_mesh = unreal.FbxSceneImportOptionsStaticMesh()
+        scene_import_options_static_mesh.set_editor_property("auto_generate_collision", False)
+        scene_import_options_static_mesh.set_editor_property("remove_degenerates", False)
+        factory.scene_import_options_static_mesh = scene_import_options_static_mesh
+        asset_import_data.factory = factory
+
+        # Import the asset and collect the paths
+        new_assets = asset_tools.import_assets_automated(asset_import_data)
+        imported_assets.extend(new_assets)
+
+    print(f"找到 {len(fbx_files)} 个fbx文件，已导入完毕。")
+
+    # Set DefaultSceneRoot mobility to Static and save
+    for asset in imported_assets:
+        asset_path = asset.get_path_name()
+        # Try to load as an actor blueprint (if that's what is imported)
+        try:
+            blueprint = unreal.EditorAssetLibrary.load_asset(asset_path)
+            # If it's a Blueprint, get CDO (Class Default Object)
+            if isinstance(blueprint, unreal.Blueprint):
+                cdo = blueprint.generated_class.get_default_object()
+                default_scene_root = cdo.root_component
+                # default_scene_root.set_mobility(unreal.ComponentMobility.STATIC)
+                default_scene_root.set_editor_property("mobility", unreal.ComponentMobility.STATIC)
+                blueprint.modify(True)
+                unreal.EditorAssetLibrary.save_asset(asset_path)
+                print(f"{asset_path}: DefaultSceneRoot set to Static and saved.")
+            # If it's a StaticMesh, just save
+            elif isinstance(blueprint, unreal.StaticMesh):
+                unreal.EditorAssetLibrary.save_asset(asset_path)
+                print(f"{asset_path}: StaticMesh saved.")
+        except Exception as e:
+            print(f"Error handling {asset_path}: {e}")
+
+if __name__ == "__main__":
+    importAssets()
